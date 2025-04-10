@@ -6,6 +6,8 @@
 #include <sbi/sbi_version.h>
 #include <sbi/riscv_asm.h>
 
+#define SBI_EXT_COV_TEST        0x0
+
 // static unsigned long trace_log[4096] __attribute__((section(".data")));
 // static unsigned int trace_index __attribute__((section(".data")));
 // static unsigned int trace_enabled __attribute__((section(".data")));
@@ -35,9 +37,6 @@ __cyg_profile_func_enter(void *this_fn, void *call_site)
 void __attribute__((no_instrument_function))
 __cyg_profile_func_exit(void *this_fn, void *call_site)
 {
-    // if (!trace_enabled) {
-    //     return ;
-    // }
 }
 
 struct sbi_ecall_extension ecall_coverage;
@@ -46,7 +45,17 @@ static int __attribute__((no_instrument_function)) sbi_ecall_coverage_handler(un
     struct sbi_trap_regs *regs,
     struct sbi_ecall_return *out)
 {
-    return 0;
+    int ret = 0;
+
+    switch (funcid) {
+        case SBI_EXT_COV_TEST:
+            out->value = 0xdeadbeef;
+            break;
+        default:
+        ret = SBI_ENOTSUPP;
+    }
+
+    return ret;
 }
 
 static int __attribute__((no_instrument_function)) sbi_ecall_coverage_register_extensions(void)
