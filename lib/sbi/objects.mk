@@ -7,6 +7,8 @@
 #   Anup Patel <anup.patel@wdc.com>
 #
 
+#libsbi-cflags-y = -finstrument-functions -O0 -g
+
 libsbi-objs-y += riscv_asm.o
 libsbi-objs-y += riscv_atomic.o
 libsbi-objs-y += riscv_hardfp.o
@@ -99,3 +101,4 @@ libsbi-objs-y += sbi_trap_v_ldst.o
 libsbi-objs-y += sbi_unpriv.o
 libsbi-objs-y += sbi_expected_trap.o
 libsbi-objs-y += sbi_cppc.o
+libsbi-objs-y += sbi_coverage.o

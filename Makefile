@@ -433,6 +433,10 @@ else
 CFLAGS		+=	-O2
 endif
 
+ifneq ($(FUZZING),)
+CFLAGS		+=  -finstrument-functions -finstrument-functions-exclude-file-list=firmware,platform,include
+endif
+
 # Setup functions for compilation
 define dynamic_flags
 -I$(shell dirname $(2)) -D__OBJNAME__=$(subst -,_,$(shell basename $(1) .o))
