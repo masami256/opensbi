@@ -11,26 +11,39 @@
 
 #define SBI_EXT_COV_TEST                0x0
 
-#define SBI_FUZZ_INIT_TRACE_BUF         0x1
-#define SBI_FUZZ_TRACE_START            0x2
-#define SBI_FUZZ_TRACE_STOP             0x3
-#define SBI_FUZZ_TRACE_LOG_COUNT        0x4
-#define SBI_FUZZ_RESET_TRACE_LOG        0x5
-#define SBI_FUZZ_COPY_TRACE_LOG         0x6
+// ecall func ids
+#define SBI_FUZZ_CMD_INIT_TRACE_BUF         0x1
+#define SBI_FUZZ_CMD_TRACE_START            0x2
+#define SBI_FUZZ_CMD_TRACE_STOP             0x3
+#define SBI_FUZZ_CMD_TRACE_LOG_COUNT        0x4
+#define SBI_FUZZ_CMD_RESET_TRACE_LOG        0x5
+#define SBI_FUZZ_CMD_COPY_TRACE_LOG         0x6
+#define SBI_FUZZ_CMD_TEST_WRITE             0x80
 
-#define SBI_FUZZ_TEST_WRITE             0x80
 
 #ifdef SBI_FUZZ_USE_ZERO_COPY
 static void *trace_log;
 static unsigned long trace_log_size;
 #else
 #define SBI_FUZZ_TRACE_LOG_SIZE (1024 * 16)
-static void trace_log;
-static unsigned long trace_log_size = SBI_FUZZ_TRACE_LOG_SIZE;
+static unsigned long trace_log[SBI_FUZZ_TRACE_LOG_SIZE];
+static unsigned long trace_log_size = SBI_FUZZ_TRACE_LOG_SIZE / sizeof(unsigned long);
 #endif // SBI_FUZZ_USE_ZERO_COPY
 
 static unsigned int trace_index = 0;
 volatile int trace_enabled;
+
+
+
+struct sbi_ecall_extension ecall_coverage;
+
+
+static void __attribute__((no_instrument_function)) sbi_fuzz_trace_enabled(int enabled)
+{
+    trace_enabled = enabled;
+}
+
+#ifdef SBI_FUZZ_USE_ZERO_COPY
 
 static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc) 
 {
@@ -40,33 +53,12 @@ static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc)
     }
 }
 
-void __attribute__((no_instrument_function, noinline))
-__cyg_profile_func_enter(void *this_fn, void *call_site)
-{
-    if (!trace_enabled) {
-        return ;
-    }
-    trace_pc((unsigned long)this_fn);
-}
-
-void __attribute__((no_instrument_function))
-__cyg_profile_func_exit(void *this_fn, void *call_site)
-{
-}
-
-struct sbi_ecall_extension ecall_coverage;
-
 static void __attribute__((no_instrument_function)) sbi_fuzz_test_write(void)
 {
-    trace_pc(0xcafebabe);
+    unsigned long *buf = trace_log;
+    buf[0] = 0xcafebabe;
 }
 
-static void __attribute__((no_instrument_function)) sbi_fuzz_trace_enabled(int enabled)
-{
-    trace_enabled = enabled;
-}
-
-#ifdef SBI_FUZZ_USE_ZERO_COPY
 static int __attribute__((no_instrument_function)) sbi_fuzzcov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out) 
 {
     return SBI_OK;
@@ -85,6 +77,17 @@ static void __attribute__((no_instrument_function))  sbi_fuzz_reset_trace_log(vo
     trace_index = 0;
 }
 #else
+static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc) 
+{
+    if (trace_index < trace_log_size) {
+        trace_log[trace_index++] = pc;
+    }
+}
+
+static void __attribute__((no_instrument_function)) sbi_fuzz_test_write(void)
+{
+    trace_log[trace_index++] = 0xcafebabe;
+}
 static int __attribute__((no_instrument_function)) sbi_fuzzcov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out)
 {
     if (trace_index > trace_log_size) {
@@ -109,35 +112,49 @@ static void __attribute__((no_instrument_function))  sbi_fuzz_reset_trace_log(vo
 {
     sbi_memset(trace_log, 0x0, SBI_FUZZ_TRACE_LOG_SIZE);
 }
-#endif //
+#endif
+
+void __attribute__((no_instrument_function, noinline))
+__cyg_profile_func_enter(void *this_fn, void *call_site)
+{
+    if (!trace_enabled) {
+        return ;
+    }
+    trace_pc((unsigned long)this_fn);
+}
+
+void __attribute__((no_instrument_function))
+__cyg_profile_func_exit(void *this_fn, void *call_site)
+{
+}
+
 static int __attribute__((no_instrument_function)) sbi_ecall_coverage_handler(unsigned long extid, unsigned long funcid,
     struct sbi_trap_regs *regs,
     struct sbi_ecall_return *out)
 {
     int ret = SBI_OK;
-
     switch (funcid) {
         case SBI_EXT_COV_TEST:
             out->value = 0xdeadbeef;
             break;
-        case SBI_FUZZ_INIT_TRACE_BUF:
+        case SBI_FUZZ_CMD_INIT_TRACE_BUF:
             sbi_fuzz_init_buffer(regs);
             break;
-        case SBI_FUZZ_TRACE_START:
+        case SBI_FUZZ_CMD_TRACE_START:
             sbi_fuzz_trace_enabled(1);
             break;
-        case SBI_FUZZ_TRACE_STOP:
+        case SBI_FUZZ_CMD_TRACE_STOP:
             sbi_fuzz_trace_enabled(0);
             break;
-        case SBI_FUZZ_TRACE_LOG_COUNT:
+        case SBI_FUZZ_CMD_TRACE_LOG_COUNT:
             out->value = trace_index;
             break;
-        case SBI_FUZZ_RESET_TRACE_LOG:
+        case SBI_FUZZ_CMD_RESET_TRACE_LOG:
             sbi_fuzz_reset_trace_log();
-        case SBI_FUZZ_COPY_TRACE_LOG:
+        case SBI_FUZZ_CMD_COPY_TRACE_LOG:
             ret = sbi_fuzzcov_copy_data(regs, out);
             break;
-        case SBI_FUZZ_TEST_WRITE:
+        case SBI_FUZZ_CMD_TEST_WRITE:
             sbi_fuzz_test_write();
             break;
         default:
