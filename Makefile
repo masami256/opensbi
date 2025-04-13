@@ -434,7 +434,7 @@ CFLAGS		+=	-O2
 endif
 
 ifneq ($(FUZZING),)
-CFLAGS		+=  -finstrument-functions -finstrument-functions-exclude-file-list=firmware,platform,include
+CFLAGS		+=	-finstrument-functions -finstrument-functions-exclude-file-list=firmware,platform,include
 endif
 
 # Setup functions for compilation

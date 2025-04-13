@@ -18,11 +18,12 @@
 #define SBI_FUZZ_CMD_TRACE_LOG_COUNT        0x4
 #define SBI_FUZZ_CMD_RESET_TRACE_LOG        0x5
 #define SBI_FUZZ_CMD_COPY_TRACE_LOG         0x6
+#define SBI_FUZZ_CMD_UNMAP_TRACE_LOG        0x7
 #define SBI_FUZZ_CMD_TEST_WRITE             0x80
 
 
 #ifdef SBI_FUZZ_USE_ZERO_COPY
-static void *trace_log;
+static unsigned long *trace_log;
 static unsigned long trace_log_size;
 #else
 #define SBI_FUZZ_TRACE_LOG_SIZE (1024 * 16)
@@ -33,10 +34,7 @@ static unsigned long trace_log_size = SBI_FUZZ_TRACE_LOG_SIZE / sizeof(unsigned 
 static unsigned int trace_index = 0;
 volatile int trace_enabled;
 
-
-
 struct sbi_ecall_extension ecall_coverage;
-
 
 static void __attribute__((no_instrument_function)) sbi_fuzz_trace_enabled(int enabled)
 {
@@ -47,19 +45,17 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_trace_enabled(int e
 
 static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc) 
 {
-    unsigned long *buf = trace_log;
     if (trace_index < trace_log_size) {
-        buf[trace_index++] = pc;
+        trace_log[trace_index++] = pc;
     }
 }
 
 static void __attribute__((no_instrument_function)) sbi_fuzz_test_write(void)
 {
-    unsigned long *buf = trace_log;
-    buf[0] = 0xcafebabe;
+    trace_log[trace_index++] = 0xcafebabe;
 }
 
-static int __attribute__((no_instrument_function)) sbi_fuzzcov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out) 
+static int __attribute__((no_instrument_function)) sbi_fuzz_cov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out) 
 {
     return SBI_OK;
 }
@@ -68,13 +64,22 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_init_buffer(struct 
 {
     trace_log = (void *) regs->a0;
     trace_log_size = regs->a1;
+    trace_index = 0;
+    trace_enabled = 0;
 }
 
 static void __attribute__((no_instrument_function))  sbi_fuzz_reset_trace_log(void)
 {
-    unsigned long *buf = trace_log;
-    sbi_memset(buf, 0x0, trace_log_size);
+    sbi_memset(trace_log, 0x0, trace_log_size);
     trace_index = 0;
+}
+
+static void __attribute__((no_instrument_function)) sbi_fuzz_unmap_trace_log(void)
+{
+    trace_log = NULL;
+    trace_log_size = 0;
+    trace_index = 0;
+    trace_enabled = 0;
 }
 #else
 static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc) 
@@ -88,7 +93,7 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_test_write(void)
 {
     trace_log[trace_index++] = 0xcafebabe;
 }
-static int __attribute__((no_instrument_function)) sbi_fuzzcov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out)
+static int __attribute__((no_instrument_function)) sbi_fuzz_cov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out)
 {
     if (trace_index > trace_log_size) {
         trace_index = trace_log_size;
@@ -108,9 +113,13 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_init_buffer(struct 
 {
 }
 
-static void __attribute__((no_instrument_function))  sbi_fuzz_reset_trace_log(void)
+static void __attribute__((no_instrument_function)) sbi_fuzz_reset_trace_log(void)
 {
     sbi_memset(trace_log, 0x0, SBI_FUZZ_TRACE_LOG_SIZE);
+}
+
+static void __attribute__((no_instrument_function)) sbi_fuzz_unmap_trace_log(void)
+{
 }
 #endif
 
@@ -152,7 +161,10 @@ static int __attribute__((no_instrument_function)) sbi_ecall_coverage_handler(un
         case SBI_FUZZ_CMD_RESET_TRACE_LOG:
             sbi_fuzz_reset_trace_log();
         case SBI_FUZZ_CMD_COPY_TRACE_LOG:
-            ret = sbi_fuzzcov_copy_data(regs, out);
+            ret = sbi_fuzz_cov_copy_data(regs, out);
+            break;
+        case SBI_FUZZ_CMD_UNMAP_TRACE_LOG:
+            sbi_fuzz_unmap_trace_log();
             break;
         case SBI_FUZZ_CMD_TEST_WRITE:
             sbi_fuzz_test_write();
