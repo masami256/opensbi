@@ -1,5 +1,3 @@
-#define SBI_FUZZ_USE_ZERO_COPY
-
 #include <sbi/sbi_coverage.h>
 #include <sbi/sbi_ecall.h>
 #include <sbi/sbi_ecall_interface.h>
@@ -21,15 +19,8 @@
 #define SBI_FUZZ_CMD_UNMAP_TRACE_LOG        0x7
 #define SBI_FUZZ_CMD_TEST_WRITE             0x80
 
-
-#ifdef SBI_FUZZ_USE_ZERO_COPY
 static unsigned long *trace_log;
 static unsigned long trace_log_size;
-#else
-#define SBI_FUZZ_TRACE_LOG_SIZE (1024 * 16)
-static unsigned long trace_log[SBI_FUZZ_TRACE_LOG_SIZE];
-static unsigned long trace_log_size = SBI_FUZZ_TRACE_LOG_SIZE / sizeof(unsigned long);
-#endif // SBI_FUZZ_USE_ZERO_COPY
 
 static unsigned int trace_index = 0;
 volatile int trace_enabled;
@@ -40,8 +31,6 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_trace_enabled(int e
 {
     trace_enabled = enabled;
 }
-
-#ifdef SBI_FUZZ_USE_ZERO_COPY
 
 static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc) 
 {
@@ -81,47 +70,6 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_unmap_trace_log(voi
     trace_index = 0;
     trace_enabled = 0;
 }
-#else
-static void __attribute__((no_instrument_function)) trace_pc(unsigned long pc) 
-{
-    if (trace_index < trace_log_size) {
-        trace_log[trace_index++] = pc;
-    }
-}
-
-static void __attribute__((no_instrument_function)) sbi_fuzz_test_write(void)
-{
-    trace_log[trace_index++] = 0xcafebabe;
-}
-static int __attribute__((no_instrument_function)) sbi_fuzz_cov_copy_data(struct sbi_trap_regs *regs, struct sbi_ecall_return *out)
-{
-    if (trace_index > trace_log_size) {
-        trace_index = trace_log_size;
-    }
-
-    if (!trace_index) {
-        return SBI_EINVAL;
-    }
-
-    void *dest = (void *) regs->a0;
-    sbi_memcpy(dest, (void *) &trace_log, sizeof(trace_log));
-    
-    return SBI_OK;
-}
-
-static void __attribute__((no_instrument_function)) sbi_fuzz_init_buffer(struct sbi_trap_regs *regs) 
-{
-}
-
-static void __attribute__((no_instrument_function)) sbi_fuzz_reset_trace_log(void)
-{
-    sbi_memset(trace_log, 0x0, SBI_FUZZ_TRACE_LOG_SIZE);
-}
-
-static void __attribute__((no_instrument_function)) sbi_fuzz_unmap_trace_log(void)
-{
-}
-#endif
 
 void __attribute__((no_instrument_function, noinline))
 __cyg_profile_func_enter(void *this_fn, void *call_site)
