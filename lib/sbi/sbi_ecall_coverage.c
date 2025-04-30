@@ -6,7 +6,7 @@
 #include <sbi/sbi_version.h>
 #include <sbi/sbi_string.h>
 #include <sbi/riscv_asm.h>
-
+#include <sbi/sbi_console.h>
 #define SBI_EXT_COV_TEST                0x0
 
 // ecall func ids
@@ -18,6 +18,7 @@
 #define SBI_FUZZ_CMD_COPY_TRACE_LOG         0x6
 #define SBI_FUZZ_CMD_UNMAP_TRACE_LOG        0x7
 #define SBI_FUZZ_CMD_TEST_WRITE             0x80
+#define SBI_FUZZ_CMD_TEST_ERROR             0x90
 
 static unsigned long *trace_log;
 static unsigned long trace_log_size;
@@ -71,6 +72,14 @@ static void __attribute__((no_instrument_function)) sbi_fuzz_unmap_trace_log(voi
     trace_enabled = 0;
 }
 
+static void __attribute__((no_instrument_function)) sbi_fuzz_test_error()
+{
+    char *ptr = NULL;
+    sbi_printf("Run sbi_fuzz_test_error\n");
+
+    sbi_strcpy(ptr, "hello world, this is a test\n");
+}
+
 void __attribute__((no_instrument_function, noinline))
 __cyg_profile_func_enter(void *this_fn, void *call_site)
 {
@@ -117,6 +126,8 @@ static int __attribute__((no_instrument_function)) sbi_ecall_coverage_handler(un
         case SBI_FUZZ_CMD_TEST_WRITE:
             sbi_fuzz_test_write();
             break;
+        case SBI_FUZZ_CMD_TEST_ERROR:
+            sbi_fuzz_test_error();
         default:
             ret = SBI_ENOTSUPP;
             break;
